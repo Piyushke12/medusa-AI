@@ -1098,9 +1098,14 @@ pub fn run_chat_tui(state: &mut EnvironmentState, tools: &ToolRegistry, caps: &C
 
     let (model_line, model_name, has_model) =
         match crate::infra::resolve_model_config(&crate::infra::load_file_config()) {
-            Ok(cfg) => (
+            Ok(crate::infra::ModelBackend::Http(cfg)) => (
                 format!("{} · {}", cfg.model, host_of(&cfg.base_url)),
                 cfg.model,
+                true,
+            ),
+            Ok(crate::infra::ModelBackend::Cli(cfg)) => (
+                format!("{} · local harness `{}`", cfg.label, cfg.exe),
+                cfg.label,
                 true,
             ),
             Err(_) => ("offline stub".to_string(), "stub".to_string(), false),

@@ -12,8 +12,8 @@ pub mod sessions;
 pub use cache::{cache_path, load_state, save_state, state_is_fresh};
 pub use config::{
     active_provider_id, config_location_help, config_path, list_provider_choices, load_file_config,
-    resolve_model_config, resolve_selection, set_provider_in_config, set_provider_in_value,
-    ProviderSummary,
+    resolve_context_settings, resolve_model_config, resolve_selection, set_provider_in_config,
+    set_provider_in_value, CliBackendConfig, ContextSettings, ModelBackend, ProviderSummary,
 };
 pub use platform::{collect_platform_info, PlatformInfo};
 pub use runner::RealCommandRunner;

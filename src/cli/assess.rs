@@ -9,8 +9,8 @@ use console::style;
 use indicatif::{ProgressBar, ProgressDrawTarget};
 
 use crate::agent::{
-    AgentEvent, AgentRuntime, Decision, FinishReason, InvestigationResult, ModelProvider,
-    OpenAiCompatibleProvider, OptionSet, ProviderRegistry, StubProvider, Target,
+    AgentEvent, AgentRuntime, CliProvider, Decision, FinishReason, InvestigationResult,
+    ModelProvider, OpenAiCompatibleProvider, OptionSet, ProviderRegistry, StubProvider, Target,
 };
 use crate::model::EnvironmentState;
 use crate::registry::{CapabilityRegistry, ToolRegistry};
@@ -57,7 +57,7 @@ impl EventRenderer {
             AgentEvent::InvestigationStarted { target } => {
                 println!(
                     "\n{}",
-                    style(format!("Medusa â€” investigating {target}"))
+                    style(format!("Medusa — investigating {target}"))
                         .cyan()
                         .bold()
                 );
@@ -67,7 +67,7 @@ impl EventRenderer {
                 println!("{}", style(format!("Step {}", step + 1)).dim());
             }
             AgentEvent::ModelThinking => {
-                self.spinner.start("Agent thinkingâ€¦");
+                self.spinner.start("Agent thinking…");
             }
             AgentEvent::ScopeGranted { target } => {
                 println!("{}", style(format!("Scope: {target}")).dim());
@@ -104,7 +104,7 @@ impl EventRenderer {
                 capability,
                 provider,
             } => {
-                println!("     â””â”€ executing {capability} via {provider}â€¦");
+                println!("     â””â”€ executing {capability} via {provider}…");
             }
             AgentEvent::ToolFinished {
                 capability,
@@ -155,7 +155,7 @@ impl EventRenderer {
             }
             AgentEvent::ApprovalRequested { capability, reason } => {
                 println!(
-                    "  {} {} â€” {}",
+                    "  {} {} — {}",
                     style("! approval:").yellow().bold(),
                     style(capability).yellow(),
                     style(reason).yellow()
@@ -236,14 +236,14 @@ impl EventRenderer {
         if let Some(err) = &res.model_error {
             println!("  model error: {}", style(err).red());
         }
-        println!("  planned actions (validated, NOT executed â€” execution is Phase 4):");
+        println!("  planned actions (validated, NOT executed — execution is Phase 4):");
         if res.planned_actions.is_empty() {
             println!("    (none)");
         }
         for a in &res.planned_actions {
             println!(
                 "    {} {} via {} on {}",
-                style("â€¢").green(),
+                style("•").green(),
                 a.capability,
                 a.provider,
                 a.target
@@ -305,7 +305,7 @@ fn print_capability_table(state: &EnvironmentState, tools: &ToolRegistry) {
     available.sort();
     println!("{}", style("Capabilities").bold());
     if available.is_empty() {
-        println!("  (none available â€” install tools first, see /install)");
+        println!("  (none available — install tools first, see /install)");
     }
     for cap in &available {
         // Provider resolution as the runtime would do it: capability â†’
@@ -331,15 +331,25 @@ fn print_capability_table(state: &EnvironmentState, tools: &ToolRegistry) {
 /// Real provider when file/env config resolves, otherwise the offline demo.
 pub fn select_model(state: &EnvironmentState) -> (Box<dyn ModelProvider>, String) {
     match crate::infra::resolve_model_config(&crate::infra::load_file_config()) {
-        Ok(cfg) => {
+        Ok(crate::infra::ModelBackend::Http(cfg)) => {
             let base = cfg.base_url.clone();
             let p = OpenAiCompatibleProvider::new(cfg);
             let label = format!("{} ({base})", p.name());
             (Box::new(p), label)
         }
+        Ok(crate::infra::ModelBackend::Cli(cfg)) => {
+            let p = CliProvider::new(
+                cfg.exe.clone(),
+                cfg.args.clone(),
+                cfg.label.clone(),
+                cfg.timeout_secs,
+            );
+            let label = format!("{} (local harness `{}`)", p.name(), cfg.exe);
+            (Box::new(p), label)
+        }
         Err(_) => (
             Box::new(StubProvider::new(demo_script(state))),
-            "stub (demo â€” no model configured)".to_string(),
+            "stub (demo — no model configured)".to_string(),
         ),
     }
 }

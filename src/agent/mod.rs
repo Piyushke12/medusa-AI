@@ -28,8 +28,8 @@ pub use http_provider::HttpRequestProvider;
 pub use research::{RESEARCH_CAPABILITIES, ResearchProvider};
 
 pub use model::{
-    ContextView, Decision, ModelError, ModelProvider, OpenAiCompatibleProvider, OptionSet,
-    OptionValue, StubProvider,
+    CliProvider, ContextView, Decision, ModelError, ModelProvider, OpenAiCompatibleProvider,
+    OptionSet, OptionValue, StubProvider,
 };
 pub use parsers::{parse_tool_output, ParsedObservation};
 pub use policy::{ExecutionPolicy, PolicyError, ScopePolicy};

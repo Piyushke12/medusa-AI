@@ -645,6 +645,8 @@ mod tests {
                 api_key: Some("k".into()),
                 model: Some("m".into()),
                 timeout_secs: Some(33),
+                command: None,
+                args: None,
             },
             ..MedusaConfig::default()
         };
@@ -668,6 +670,8 @@ mod tests {
                 api_key: Some("file-key".into()),
                 model: Some("from-file".into()),
                 timeout_secs: None,
+                command: None,
+                args: None,
             },
             ..MedusaConfig::default()
         };
@@ -738,7 +742,8 @@ mod tests {
     }
 
     #[test]
-    fn pasted_secrets_with_surrounding_whitespace_are_trimmed() {        // Copy-paste from a browser routinely trails a newline; it must
+    fn pasted_secrets_with_surrounding_whitespace_are_trimmed() {
+        // Copy-paste from a browser routinely trails a newline; it must
         // not ride into the auth header (401) or model id (404).
         let env: HashMap<&str, &str> = [
             ("MEDUSA_MODEL_PROVIDER", "claude"),
@@ -749,6 +754,77 @@ mod tests {
         let file = MedusaConfig::default();
         let cfg = http(&file, &env);
         assert_eq!(cfg.api_key, "sk-ant-secret");
+    }
+
+    #[test]
+    fn builtin_cli_harness_resolves_without_a_key() {
+        // `opencode` needs no API key in Medusa config — it authenticates
+        // itself (`opencode auth`). Resolution must not demand one.
+        let env = HashMap::new();
+        let file = MedusaConfig {
+            provider: Some("opencode".into()),
+            ..MedusaConfig::default()
+        };
+        let cfg = cli(&file, &env);
+        assert_eq!(cfg.exe, "opencode");
+        assert_eq!(cfg.args, vec!["run".to_string(), "{prompt}".to_string()]);
+        assert_eq!(cfg.label, "opencode");
+        assert_eq!(cfg.timeout_secs, 300);
+    }
+
+    #[test]
+    fn builtin_claude_code_resolves_without_a_key() {
+        let env = HashMap::new();
+        let file = MedusaConfig {
+            provider: Some("claude-code".into()),
+            ..MedusaConfig::default()
+        };
+        let cfg = cli(&file, &env);
+        assert_eq!(cfg.exe, "claude");
+        assert_eq!(cfg.args, vec!["-p".to_string(), "{prompt}".to_string()]);
+    }
+
+    #[test]
+    fn custom_command_wins_over_base_url_and_takes_timeout() {
+        let env: HashMap<&str, &str> =
+            [("MEDUSA_MODEL_TIMEOUT_SECS", "42")].into_iter().collect();
+        let file: MedusaConfig = serde_json::from_str(
+            r#"{"provider":"local","providers":{"local":{"command":"myharness","args":["ask","{prompt}"],"timeout_secs":60,"base_url":"https://unused/v1"}}}"#,
+        )
+        .unwrap();
+        let cfg = cli(&file, &env);
+        assert_eq!(cfg.exe, "myharness");
+        assert_eq!(cfg.args, vec!["ask".to_string(), "{prompt}".to_string()]);
+        // Env beats the entry timeout.
+        assert_eq!(cfg.timeout_secs, 42);
+        let env = HashMap::new();
+        let cfg = cli(&file, &env);
+        assert_eq!(cfg.timeout_secs, 60);
+    }
+
+    #[test]
+    fn model_block_command_resolves_cli_by_default() {
+        let env = HashMap::new();
+        let file: MedusaConfig =
+            serde_json::from_str(r#"{"model":{"command":"claude"}}"#).unwrap();
+        let cfg = cli(&file, &env);
+        assert_eq!(cfg.exe, "claude");
+        // No `{prompt}` placeholder: the prompt is appended.
+        assert_eq!(cfg.args, vec!["{prompt}".to_string()]);
+        assert_eq!(cfg.label, "cli");
+    }
+
+    #[test]
+    fn cli_choices_carry_cli_kind() {
+        let file = MedusaConfig::default();
+        let choices = list_provider_choices(&file);
+        let kinds: std::collections::HashMap<&str, &str> = choices
+            .iter()
+            .map(|c| (c.id.as_str(), c.kind.as_str()))
+            .collect();
+        assert_eq!(kinds["opencode"], "cli");
+        assert_eq!(kinds["claude-code"], "cli");
+        assert_eq!(kinds["nvidia"], "builtin");
     }
 
     #[test]
@@ -827,7 +903,10 @@ mod tests {
         .unwrap();
         let choices = list_provider_choices(&file);
         let ids: Vec<&str> = choices.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(ids, vec!["", "nvidia", "claude", "gw"]);
+        assert_eq!(
+            ids,
+            vec!["", "nvidia", "claude", "claude-code", "opencode", "gw"]
+        );
         assert_eq!(choices[0].tag, "grid.ai.juspay.net");
         assert_eq!(choices[0].model.as_deref(), Some("glm-latest"));
         assert_eq!(
@@ -842,9 +921,9 @@ mod tests {
         .unwrap();
         let c2 = list_provider_choices(&file2);
         let ids2: Vec<&str> = c2.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(ids2, vec!["", "claude", "nvidia"]);
-        assert_eq!(c2[2].base_url.as_deref(), Some("https://mirror/v1"));
-        assert_eq!(c2[2].kind, "config");
+        assert_eq!(ids2, vec!["", "claude", "claude-code", "opencode", "nvidia"]);
+        assert_eq!(c2[4].base_url.as_deref(), Some("https://mirror/v1"));
+        assert_eq!(c2[4].kind, "config");
     }
 
     #[test]

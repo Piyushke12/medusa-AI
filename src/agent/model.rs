@@ -4,8 +4,12 @@
 //! policy, and constructs tool invocations.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+
+use crate::agent::executor::{LocalProcessExecutor, ProcessExecutor};
 
 /// One semantic option value supplied by the model. Scalars only —
 /// arrays/objects are rejected at the wire boundary, and the value must
@@ -809,12 +813,12 @@ Never report a vulnerability as confirmed solely because a tool reported a poten
 Instead:
 
 Detection
-→ investigate
-→ reproduce
-→ validate
-→ determine impact
-→ correlate with other weaknesses
-→ report.
+â†’ investigate
+â†’ reproduce
+â†’ validate
+â†’ determine impact
+â†’ correlate with other weaknesses
+â†’ report.
 
 Strong evidence should increase your willingness to pursue an attack path.
 
@@ -987,27 +991,27 @@ Always consider vulnerability chaining.
 For example:
 
 weak authentication
-→ low-privilege access
-→ authorization weakness
-→ sensitive object access
-→ administrative functionality
-→ higher privilege.
+â†’ low-privilege access
+â†’ authorization weakness
+â†’ sensitive object access
+â†’ administrative functionality
+â†’ higher privilege.
 
 Or:
 
 information disclosure
-→ internal endpoint discovery
-→ server-side request capability
-→ internal service access
-→ additional attack surface.
+â†’ internal endpoint discovery
+â†’ server-side request capability
+â†’ internal service access
+â†’ additional attack surface.
 
 Or:
 
 source exposure
-→ secret discovery
-→ authenticated API access
-→ privilege escalation
-→ sensitive resource access.
+â†’ secret discovery
+â†’ authenticated API access
+â†’ privilege escalation
+â†’ sensitive resource access.
 
 These are examples of reasoning patterns, not mandatory sequences.
 
@@ -1296,7 +1300,7 @@ impl ModelProvider for StubProvider {
 /// MEDUSA_MODEL_NAME      model id, e.g. gpt-4o-mini
 /// MEDUSA_MODEL_TIMEOUT_SECS (optional, default 120)
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenAiConfig {
     pub base_url: String,
     pub api_key: String,
@@ -1518,6 +1522,141 @@ impl ModelProvider for OpenAiCompatibleProvider {
 
     fn chat(&self, system: &str, user: &str) -> Result<String, ModelError> {
         self.complete(system, user)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CLI provider (local harnesses: `claude -p`, `opencode run`, ...)
+// ---------------------------------------------------------------------------
+
+/// A local harness subprocess as a model: one one-shot invocation per
+/// model call, prompt in, answer on stdout. The harness sees the exact
+/// same content as an HTTP provider (system prompt + serialized view,
+/// joined into one prompt string) and answers are parsed by the same
+/// tolerant decision parser — only the envelope differs.
+///
+/// Spawned with an argv list, never a shell. Nonzero exits, spawn
+/// failures, and timeouts surface as `Transport` errors, so the drive
+/// loop retries and feeds them back exactly like HTTP failures.
+/// Plain-text CLI output carries no token counts, so usage is always
+/// the char/4 estimate (via the `decide_reported` default).
+pub struct CliProvider {
+    exe: String,
+    args: Vec<String>,
+    label: String,
+    display_name: String,
+    timeout: Duration,
+    executor: Arc<dyn ProcessExecutor>,
+}
+
+impl CliProvider {
+    pub fn new(exe: String, args: Vec<String>, label: String, timeout_secs: u64) -> Self {
+        let display_name = format!("cli:{label}");
+        Self {
+            exe,
+            args,
+            label,
+            display_name,
+            timeout: Duration::from_secs(timeout_secs.max(1)),
+            executor: Arc::new(LocalProcessExecutor::with_timeout(Duration::from_secs(
+                timeout_secs.max(1),
+            ))),
+        }
+    }
+
+    #[cfg(test)]
+    fn with_executor(
+        exe: &str,
+        args: Vec<String>,
+        label: &str,
+        executor: Arc<dyn ProcessExecutor>,
+    ) -> Self {
+        Self {
+            exe: exe.to_string(),
+            args,
+            label: label.to_string(),
+            display_name: format!("cli:{label}"),
+            timeout: Duration::from_secs(30),
+            executor,
+        }
+    }
+
+    /// Build the argv: every `"{prompt}"` occurrence is replaced; when no
+    /// argument contains the placeholder, the prompt is appended last
+    /// (positional-prompt harnesses like `opencode run <message>`).
+    pub fn render_args(&self, prompt: &str) -> Vec<String> {
+        if self.args.iter().any(|a| a.contains("{prompt}")) {
+            self.args
+                .iter()
+                .map(|a| a.replace("{prompt}", prompt))
+                .collect()
+        } else {
+            let mut out = self.args.clone();
+            out.push(prompt.to_string());
+            out
+        }
+    }
+
+    fn invoke(&self, prompt: &str) -> Result<String, ModelError> {
+        let argv = self.render_args(prompt);
+        let out = self.executor.run(&self.exe, &argv, self.timeout);
+        if out.timed_out {
+            return Err(ModelError::Transport(format!(
+                "cli model `{}` timed out after {}s",
+                self.exe,
+                self.timeout.as_secs()
+            )));
+        }
+        if let Some(e) = out.error {
+            return Err(ModelError::Transport(format!(
+                "cli model `{}` failed to run: {e}",
+                self.exe
+            )));
+        }
+        if out.exit_code != 0 {
+            // The harness's own stderr tail (auth failures, bad flags,
+            // missing login) — the actionable part of the failure.
+            let trimmed = out.stderr.trim();
+            let snip: String = trimmed
+                .chars()
+                .rev()
+                .take(500)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect();
+            return Err(ModelError::Transport(format!(
+                "cli model `{}` exited {}: {}",
+                self.exe, out.exit_code, snip
+            )));
+        }
+        let text = out.stdout.trim().to_string();
+        if text.is_empty() {
+            return Err(ModelError::BadResponse(format!(
+                "cli model `{}` returned empty output",
+                self.exe
+            )));
+        }
+        Ok(text)
+    }
+}
+
+impl ModelProvider for CliProvider {
+    fn name(&self) -> &str {
+        &self.display_name
+    }
+
+    fn decide(&self, ctx: &ContextView) -> Result<Decision, ModelError> {
+        let prompt = format!(
+            "{}\n\n---\n\n{}",
+            SYSTEM_PROMPT,
+            serde_json::to_string(ctx).unwrap_or_default()
+        );
+        parse_decision_text(&self.invoke(&prompt)?)
+    }
+
+    fn chat(&self, system: &str, user: &str) -> Result<String, ModelError> {
+        self.invoke(&format!("{system}\n\n---\n\n{user}"))
     }
 }
 
@@ -1759,8 +1898,7 @@ mod tests {
     }
 
     #[test]
-    fn error_snippet_extracts_endpoint_reason() {
-        let s = error_snippet(r#"{"type":"error","error":{"type":"invalid_request_error","message":"temperature may only be set to 1.0 when thinking is enabled"}}"#);
+    fn error_snippet_extracts_endpoint_reason() {        let s = error_snippet(r#"{"type":"error","error":{"type":"invalid_request_error","message":"temperature may only be set to 1.0 when thinking is enabled"}}"#);
         assert!(s.contains("temperature may only be set to 1.0"));
         let s = error_snippet(r#"{"message":"model not found"}"#);
         assert_eq!(s, "model not found");
@@ -1768,6 +1906,100 @@ mod tests {
         let s = error_snippet(&"x".repeat(500));
         assert_eq!(s.len(), 300);
         assert_eq!(error_snippet(""), "");
+    }
+
+    #[test]
+    fn cli_render_args_substitutes_or_appends_prompt() {
+        use crate::agent::executor::StubExecutor;
+        let stub: Arc<dyn crate::agent::executor::ProcessExecutor> =
+            Arc::new(StubExecutor::new());
+        let p = CliProvider::with_executor(
+            "opencode",
+            vec!["run".into(), "{prompt}".into()],
+            "opencode",
+            stub,
+        );
+        assert_eq!(p.render_args("hi"), vec!["run".to_string(), "hi".to_string()]);
+        let stub2: Arc<dyn crate::agent::executor::ProcessExecutor> =
+            Arc::new(StubExecutor::new());
+        let p2 = CliProvider::with_executor("opencode", vec!["run".into()], "opencode", stub2);
+        // No placeholder: prompt appended last.
+        assert_eq!(
+            p2.render_args("hi"),
+            vec!["run".to_string(), "hi".to_string()]
+        );
+        assert_eq!(p.name(), "cli:opencode");
+    }
+
+    #[test]
+    fn cli_decide_parses_harness_stdout() {
+        use crate::agent::executor::StubExecutor;
+        let stub: Arc<dyn crate::agent::executor::ProcessExecutor> = Arc::new(
+            StubExecutor::success("myharness", "thinking out loud\n{\"decision\":\"finish\",\"reason\":\"ok\"}\n"),
+        );
+        let p = CliProvider::with_executor("myharness", vec!["{prompt}".into()], "t", stub);
+        // Leading prose tolerated, same as non-JSON-mode HTTP endpoints.
+        let d = p
+            .decide(&ContextView {
+                target: "x".into(),
+                step: 0,
+                autonomous: false,
+                conversation: vec![],
+                available_capabilities: vec![],
+                unavailable_count: 0,
+                observations: vec![],
+                recent_evidence: vec![],
+                narrations: vec![],
+                prior_actions: vec![],
+                capability_schemas: vec![],
+                last_error: None,
+                findings: vec![],
+                vault_keys: vec![],
+                vault_values: vec![],
+                context_note: None,
+            })
+            .unwrap();
+        assert!(matches!(d, Decision::Finish { .. }));
+    }
+
+    #[test]
+    fn cli_failures_map_to_transport_or_bad_response() {
+        use crate::agent::executor::{ProcessOutput, StubExecutor};
+        // Unconfigured exe: spawn failure â†’ Transport (retried).
+        let stub: Arc<dyn crate::agent::executor::ProcessExecutor> =
+            Arc::new(StubExecutor::new());
+        let p = CliProvider::with_executor("nope-missing", vec![], "t", stub);
+        assert!(matches!(
+            p.invoke("hi"),
+            Err(ModelError::Transport(_))
+        ));
+        // Nonzero exit with stderr â†’ Transport carrying the tail.
+        let stub: Arc<dyn crate::agent::executor::ProcessExecutor> = Arc::new(
+            StubExecutor::new().with_output(
+                "badcli",
+                ProcessOutput {
+                    exit_code: 1,
+                    stdout: String::new(),
+                    stderr: "auth failed: login required".into(),
+                    timed_out: false,
+                    error: None,
+                },
+            ),
+        );
+        let p = CliProvider::with_executor("badcli", vec![], "t", stub);
+        match p.invoke("hi") {
+            Err(ModelError::Transport(msg)) => assert!(msg.contains("login required")),
+            other => panic!("expected Transport, got {other:?}"),
+        }
+        // Exit 0, empty stdout â†’ BadResponse (not retried as transport).
+        let stub: Arc<dyn crate::agent::executor::ProcessExecutor> = Arc::new(
+            StubExecutor::success("emptycli", "   "),
+        );
+        let p = CliProvider::with_executor("emptycli", vec![], "t", stub);
+        assert!(matches!(
+            p.invoke("hi"),
+            Err(ModelError::BadResponse(_))
+        ));
     }
 
     #[test]
