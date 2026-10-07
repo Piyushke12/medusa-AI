@@ -1,4 +1,4 @@
-//! Builtin tool definitions Ã¢â‚¬â€ declarative data only.
+//! Builtin tool definitions ââ‚¬” declarative data only.
 //!
 //! Installation policy (do not fabricate):
 //! * `docs_url` is always an official homepage / official GitHub org repo.
@@ -42,7 +42,7 @@ fn bind(
 }
 
 /// Capability-constant flag: an option binding with an EMPTY option name
-/// that is appended whenever an action's capability matches â€” e.g. nmap
+/// that is appended whenever an action's capability matches — e.g. nmap
 /// always gets `-O` for `network.os_detection`. Not model-controllable:
 /// the schema never exposes an empty option name, so these bindings can
 /// never collide with a model-supplied option.
@@ -203,7 +203,7 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
         "Download the official Windows release binary. See releases page.",
         "https://github.com/projectdiscovery/naabu/releases",
     ));
-    // naabu binds `ports` but NOT `intensity` â€” requesting intensity makes
+    // naabu binds `ports` but NOT `intensity` — requesting intensity makes
     // the resolver prefer nmap, or reject when only naabu is available.
     naabu.option_bindings = vec![bind("network.port_scan", "ports", "-p", false, &[])];
     v.push(naabu);
@@ -253,7 +253,7 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
         "https://github.com/projectdiscovery/dnsx",
         adapter("dnsx_json", true),
         70,
-        // dnsx requires a wordlist with `-d` domain input â€” without `-w` it
+        // dnsx requires a wordlist with `-d` domain input — without `-w` it
         // fatals with "missing wordlist(w) flag required with domain(d) input".
         &["-d", "{target}", "-w", "wordlists/subdomains.txt"],
     );
@@ -457,7 +457,7 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
     katana.option_bindings = vec![bind("http.crawl", "depth", "-d", false, &[])];
     v.push(katana);
 
-    // BrowserProvider as first-class capability â€” same AgentRuntime, new provider via Playwright sidecar.
+    // BrowserProvider as first-class capability — same AgentRuntime, new provider via Playwright sidecar.
     // Medusa Rust â†’ `node <state_dir>/scripts/browser-observe.mjs --url {target} --json`
     // â†’ Playwright â†’ headless Chromium. The sidecar script is embedded in the
     // binary (`infra::scripts`) and written to the state dir on first use via
@@ -628,7 +628,7 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
         "https://sqlmap.org",
         adapter("sqlmap_plain", true),
         70,
-        // Target must be the FULL endpoint URL (with path) â€” sqlmap cannot
+        // Target must be the FULL endpoint URL (with path) — sqlmap cannot
         // test a bare origin ("no parameter(s) found"). POST bodies and
         // parameter pinning arrive via option bindings.
         &["-u", "{target}", "--batch", "--non-interactive"],
@@ -820,7 +820,7 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
         None,
         80,
         // No argv on purpose: CodeQL needs `database create` then
-        // `database analyze` â€” a two-step workflow with a persistent
+        // `database analyze` — a two-step workflow with a persistent
         // database directory that one {target} invocation cannot express.
         // The provider availability guard keeps it non-executable until a
         // workflow wrapper exists.
@@ -1072,7 +1072,7 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
         "https://github.com/kubescape/kubescape",
         adapter("kubescape_json", true),
         60,
-        // scan framework all <target> â€” target is a manifest file, dir,
+        // scan framework all <target> — target is a manifest file, dir,
         // repo URL or cluster reference; JSON goes to stdout.
         &["scan", "framework", "all", "--format", "json", "{target}"],
     );
@@ -1141,7 +1141,7 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
         // No argv on purpose: headless analysis needs the separate
         // analyzeHeadless launcher with a two-step project workflow
         // (create/import then analyze) that a single {target} invocation
-        // cannot express. Bare `ghidra` opens the GUI â€” the provider
+        // cannot express. Bare `ghidra` opens the GUI — the provider
         // availability guard keeps this tool non-executable (and the
         // model untempted) until a real adapter lands.
         &[],
@@ -1252,7 +1252,7 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
         78,
         // No argv on purpose: prowler has no target positional (it audits
         // the ambient cloud account from credentials) and its JSON report
-        // is written to ./output files, not stdout â€” the executor would
+        // is written to ./output files, not stdout — the executor would
         // capture nothing parseable. Stays non-executable until an
         // adapter reads the report files.
         &[],
@@ -1417,7 +1417,7 @@ pub fn builtin_tools() -> Vec<ToolDefinition> {
     // medusa-http: raw HTTP request issuing built into the agent. This is
     // what lets the model verify business-logic findings directly (login
     // bypass, IDOR/BOLA primitives, auth checks) without an external
-    // scanner. `builtin: true` â€” discovery reports it available without a
+    // scanner. `builtin: true` — discovery reports it available without a
     // PATH probe and the runtime swaps in the HttpRequestProvider instead
     // of a CLI ProcessProvider.
     let mut medusa_http = def(

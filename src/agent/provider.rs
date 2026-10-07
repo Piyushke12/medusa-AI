@@ -6,12 +6,12 @@
 //! Executor   = how it actually runs  (ProcessExecutor, future: HTTP/MCP)
 //! ```
 //!
-//! The LLM decides *what capability it needs* â€” never which binary,
+//! The LLM decides *what capability it needs* — never which binary,
 //! never which flags. [`ProviderRegistry::select`] resolves a capability
 //! to an appropriate healthy provider (priority-ordered, option-aware);
 //! the selected provider translates the semantic request into its own
 //! invocation. Argument translation is trusted runtime code driven by
-//! declarative [`OptionBinding`] data â€” the model's options can only
+//! declarative [`OptionBinding`] data — the model's options can only
 //! map onto whitelisted flags with validated values.
 //!
 //! Adding a non-CLI provider later (browser, HTTP API, MCP) means
@@ -125,7 +125,7 @@ pub struct ExecutionContext<'a> {
 }
 
 /// One implementation of a capability. Concrete today: [`ProcessProvider`]
-/// (CLI tools). Future: browser, HTTP API, MCP â€” same trait, same runtime.
+/// (CLI tools). Future: browser, HTTP API, MCP — same trait, same runtime.
 pub trait CapabilityProvider: Send + Sync {
     /// Stable provider id (== tool id for CLI providers), e.g. "nmap".
     fn id(&self) -> &str;
@@ -180,7 +180,7 @@ fn fs_target_reject_reason(tool_id: &str, target: &str) -> Option<String> {
 
 /// CLI-process provider backed by a [`ToolDefinition`]: argv template +
 /// semantic option bindings. The registry data (executable candidates,
-/// install info, priority) is reused as-is â€” this is the provider-oriented
+/// install info, priority) is reused as-is — this is the provider-oriented
 /// view over the existing tool registry, not a rewrite of it.
 pub struct ProcessProvider {
     def: ToolDefinition,
@@ -203,7 +203,7 @@ impl ProcessProvider {
     /// Semantic option â†’ provider argv translation. Only options with a
     /// declared binding can appear here (policy already rejected unknown
     /// options against the capability schema); a missing binding is a
-    /// hard error, never a passthrough â€” no model input ever reaches the
+    /// hard error, never a passthrough — no model input ever reaches the
     /// process invocation unbound.
     fn translate(&self, request: &CapabilityRequest) -> Result<Vec<String>, String> {
         let mut args = resolve_args(&self.def.default_args, &request.target);
@@ -733,7 +733,7 @@ mod tests {
     #[test]
     fn provider_translate_rejects_unbound_option_never_passthrough() {
         // Even if an option bypassed schema validation somehow, the
-        // provider refuses to translate it â€” no passthrough to argv.
+        // provider refuses to translate it — no passthrough to argv.
         let tools = ToolRegistry::builtin();
         let env = state_with(&["nmap"]);
         let def = tools.get("nmap").unwrap().clone();

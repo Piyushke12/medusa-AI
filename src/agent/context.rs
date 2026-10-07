@@ -1,24 +1,24 @@
-//! Phase 2: the ContextManager â€” budgeted, relevance-filtered model context.
+//! Phase 2: the ContextManager — budgeted, relevance-filtered model context.
 //!
 //! The investigation loop records everything (actions, hypotheses, parsed
 //! observations); the ContextManager decides what the model *sees* on each
 //! step. Selection signals in Phase 2:
 //!
-//! * **Token budgeting** â€” a char-approximated ceiling (~4 chars â‰ˆ 1 token)
+//! * **Token budgeting** — a char-approximated ceiling (~4 chars â‰ˆ 1 token)
 //!   on the serialized decision prompt, so long investigations cannot bloat
 //!   context until the model degrades.
-//! * **Recency filtering** â€” within each category the newest records win
+//! * **Recency filtering** — within each category the newest records win
 //!   (the freshest state is the most relevant while iterating).
-//! * **Deduplication** â€” identical observation summaries collapse; tools
+//! * **Deduplication** — identical observation summaries collapse; tools
 //!   re-run on overlapping scope must not pay context twice.
-//! * **Never-elided essentials** â€” target, step, the capability action
+//! * **Never-elided essentials** — target, step, the capability action
 //!   space, and the last error always reach the model. A model that cannot
 //!   see what it may do, or why its last action failed, cannot recover.
 //!
 //! Richer relevance (world-model affinity, hypothesis linkage) arrives with
 //! Phase 3/6; the [`ContextManager`] interface stays the same.
 //!
-//! Purity: recording and selection are pure â€” no I/O, no events, no clocks.
+//! Purity: recording and selection are pure — no I/O, no events, no clocks.
 //! The runtime decides when to record and which events to emit.
 
 use serde::{Deserialize, Serialize};
