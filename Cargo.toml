@@ -1,0 +1,35 @@
+[package]
+name = "medusa"
+version = "0.1.0"
+edition = "2021"
+description = "Phase 0: Security Tool Discovery, Capability Registry, and Environment Doctor"
+license = "MIT"
+
+[[bin]]
+name = "medusa"
+path = "src/main.rs"
+
+[lib]
+name = "medusa_lib"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Blocking HTTP for the OpenAI-compatible ModelProvider (rustls TLS, no async
+# runtime needed until tool execution lands in Phase 4).
+# `socks-proxy` enables HTTP(S)_PROXY from env so grid.ai / corporate proxies
+# are respected on Windows — without it ureq silently ignores proxies and
+# surfaces as `os error 10060` (connect timeout) while curl/other agents
+# succeed.
+ureq = { version = "2", default-features = false, features = ["tls", "json", "socks-proxy"] }
+# Phase 1.6 rich inline CLI (libraries, not hand-rolled escape codes).
+console = "0.15"
+indicatif = "0.17"
+# Phase 1.7 fullscreen TUI (opencode/Claude-CLI style investigation screen).
+ratatui = "0.29"
+crossterm = "0.28"
+# Phase 5 structured observations: nmap XML output is the canonical
+# machine-readable format (per nmap docs); quick-xml's serde support
+# deserializes it directly into typed structs.
+quick-xml = { version = "0.42", features = ["serialize"] }

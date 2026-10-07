@@ -1,0 +1,7 @@
+[toolchain]
+# Pinned to the GNU target: this machine has no MSVC linker, GCC is provided
+# globally via `scoop install mingw-winlibs`. On machines with Visual Studio
+# Build Tools, switch channel to "stable" (MSVC default) — no code changes.
+channel = "stable-x86_64-pc-windows-gnu"
+components = ["rustfmt", "clippy"]
+targets = ["x86_64-pc-windows-gnu"]
